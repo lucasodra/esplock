@@ -65,7 +65,7 @@ void setup() {
     }
 
     Serial.println("Connected to server");
-    colorWipe(strip.Color(69, 233, 228), 50); // Cyan --> Connected to server
+    colorWipe(strip.Color(0, 255, 0), 50); // Green --> Connected to server
 
     // Set the message callback
     client.onMessage(onMessage);
