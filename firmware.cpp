@@ -1,23 +1,27 @@
 #include <Adafruit_NeoPixel.h>
-#include <ArduionoWebsockets.h>
+#include <ArduinoWebsockets.h>
 #include <HTTPClient.h>
 #include <WiFi.h>
 
 #define PIN 16      // Pin number for the NeoPixel
 #define NUMPIXELS 1 // Number of NeoPixels in the strip
 
+using namespace websockets;
+
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
 
 const char *ssid = "AnyBirdie";
-const char *password = "PASSWORD";
+const char *password = "anybirdiegolf";
 const char *serverAddress = "192.168.1.107";
 const char *serverName = "<OPENLOCK_API_ENDPOINT";
+const int serverPort = 3000;
 
 WebsocketsClient client;
+HTTPClient http;
 
 // Code underneath verify whether unlock request
 void onMessage(WebsocketsMessage message) {
-    Serial.println("Received message from server: " + message);
+    Serial.println("Received message from server: " + message.data());
     // Handle the message received from the server
 }
 
@@ -42,6 +46,7 @@ void setup() {
         delay(500);
         Serial.print(".");
     }
+    
 
     Serial.println("");
     Serial.println("WiFi connected.");
@@ -56,11 +61,11 @@ void setup() {
     while (!client.available()) {
         client.poll();
         delay(10);
-        colorWipe(strip.Color(233, 69, 233)); // Pink --> Connecting to server --> not connected to server
+        colorWipe(strip.Color(233, 69, 233), 50); // Pink --> Connecting to server --> not connected to server
     }
 
     Serial.println("Connected to server");
-    colorWipe(strip.Color(69, 233, 228)); // Cyan --> Connected to server
+    colorWipe(strip.Color(69, 233, 228), 50); // Cyan --> Connected to server
 
     // Set the message callback
     client.onMessage(onMessage);
@@ -70,9 +75,6 @@ int value = 0;
 
 void loop() {
     // put your main code here, to run repeatedly:
-    if (WiFi.status() == WL_CONNECTED) {
-        HHTPClient http;
-    }
 
     http.begin(serverName);
 
