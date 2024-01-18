@@ -1,0 +1,10 @@
+#ifndef CONFIG_H
+#define CONFIG_H
+
+#define SSID "example_ssid"
+#define PASSWORD "example_password"
+#define SERVERADDRESS "write server address here"
+
+#define PORT 3000
+
+#endif

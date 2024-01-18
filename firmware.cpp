@@ -1,77 +1,64 @@
+#include "Adafruit_NeoPixel.h"
+#include "config.h"
+#include <ArduinoWebsockets.h>
 #include <WiFi.h>
-#include <Adafruit_NeoPixel.h>
-#include <HTTPClient.h>
 
+#define PIN 16
+#define NUMPIXELS 3
 
-#define PIN       16  // Pin number for the NeoPixel
-#define NUMPIXELS 3   // Number of NeoPixels in the strip
+using namespace websockets;
 
+// Create a WebSocket client instance
+WebsocketsClient client;
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
 
-const char* ssid = "WIFI_SSID";
-const char* password = "PASSWORD";
-
-const char* serverName = "<OPENLOCK_API_ENDPOINT";
-
 void setup() {
-  // put your setup code here, to run once:
-  strip.begin();
-  strip.show();
+    Serial.begin(115200);
+    colorWipe(strip.Color(255, 0, 0), 50); // Red
 
-  Serial.begin(115200);
-  colorWipe(strip.Color(255, 0, 0), 50);  // Red
-  delay(500);
+    // Connect to Wi-Fi
+    WiFi.begin(SSID, PASSWORD);
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
 
-  // Connecting to a WiFi Network
-  Serial.println();
-  Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
+    Serial.println("");
+    Serial.println("WiFi connected.");
+    colorWipe(strip.Color(255, 125, 0), 50); // Orange on Standby
 
-  WiFi.begin(ssid, password);
+    // Connect to the WebSocket server
+    while (!client.connect(SERVERADDRESS, PORT, "/")) {
+        Serial.println("Failed to connect to WebSocket server. Retrying...");
+        delay(1000);
+    }
 
-  while(WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
+    Serial.println("Connected to WebSocket server.");
+    colorWipe(strip.Color(0, 255, 0), 50); // Green connected
 
-  Serial.println("");
-  Serial.println("WiFi connected.");
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
-  
-  colorWipe(strip.Color(0, 0, 255), 50);  // Bue
-  delay(500);
-
+    // Register a callback function to handle incoming messages
+    client.onMessage([](WebsocketsMessage message) {
+        Serial.println("Received message: " + message.data());
+        colorWipe(strip.Color(0, 0, 255), 2000); // Blue message received
+        colorWipe(strip.Color(0, 255, 0), 50);   // Green connected, waiting for instruction
+    });
 }
 
-int value = 0;
-
 void loop() {
-  // put your main code here, to run repeatedly:
-  if (WiFi.status() == WL_CONNECTED) {
-    HHTPClient http;
-  }
+    // Handle WebSocket events
+    if (client.available()) {
+        client.poll();
+    }
+    delay(500);
 
-  http.begin(serverName);
-
-  int httpResponseCode = http.GET();
-
-  if (httpResponseCode > 0) {
-    String response = http.getString();
-
-    Serial.println(httpResponseCode);
-    Serial.println(response);
-
-    if (response == "open") {}
-  }
+    // Your main loop code goes here
 }
 
 // Fill the dots one after the other with a color
 void colorWipe(uint32_t color, int wait) {
-  for(int i=0; i<strip.numPixels(); i++) {
-    strip.setPixelColor(i, color);
-    strip.show();
-    delay(wait);
-  }
+    for (int i = 0; i < strip.numPixels(); i++) {
+        strip.setPixelColor(i, color);
+        strip.show();
+        delay(wait);
+    }
 }
