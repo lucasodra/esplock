@@ -1,96 +1,67 @@
+#include "config.h"
 #include <Adafruit_NeoPixel.h>
-#include <ArduinoWebsockets.h>
-#include <HTTPClient.h>
+#include <AsyncWebSocket.h>
+#include <ESPAsyncWebServer.h>
 #include <WiFi.h>
 
 #define PIN 16      // Pin number for the NeoPixel
 #define NUMPIXELS 1 // Number of NeoPixels in the strip
 
-using namespace websockets;
-
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
 
-const char *ssid = "AnyBirdie";
-const char *password = "anybirdiegolf";
-const char *serverAddress = "192.168.1.107";
-const char *serverName = "<OPENLOCK_API_ENDPOINT";
-const int serverPort = 3000;
-
-WebsocketsClient client;
-HTTPClient http;
-
-// Code underneath verify whether unlock request
-void onMessage(WebsocketsMessage message) {
-    Serial.println("Received message from server: " + message.data());
-    // Handle the message received from the server
-}
+AsyncWebServer server(PORT);
+AsyncWebSocket ws("/ws");
 
 void setup() {
-    // put your setup code here, to run once:
-    strip.begin();
-    strip.show();
-
     Serial.begin(115200);
     colorWipe(strip.Color(255, 0, 0), 50); // Red
-    delay(500);
 
-    // Connecting to a WiFi Network -----------------------
-    Serial.println();
-    Serial.println();
-    Serial.print("Connecting to ");
-    Serial.println(ssid);
+    IPAddress ip_address(IP_1, IP_2, IP_3, IP_4);
+    IPAddress gateway(GATEWAY_1, GATEWAY_2, GATEWAY_3, GATEWAY_4);
+    IPAddress subnet(SUBNET_1, SUBNET_2, SUBNET_3, SUBNET_4);
 
-    WiFi.begin(ssid, password);
-
+    // Connect to Wi-Fi
+    WiFi.config(ip_address, gateway, subnet);
+    WiFi.begin(SSID, PASSWORD);
     while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
+        delay(1000);
+        Serial.println("Connecting to WiFi...");
     }
-    
 
-    Serial.println("");
-    Serial.println("WiFi connected.");
-    Serial.println("IP address: ");
+    Serial.println("WiFi connected");
     Serial.println(WiFi.localIP());
+    colorWipe(strip.Color(255, 165, 0), 50); // Orange --> Connected to WiFi and on Standby
 
-    colorWipe(strip.Color(0, 0, 255), 50); // Blue --> connected to wifi
-    delay(500);
+    // Handle WebSocket events
+    ws.onEvent([](AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
+        if (type == WS_EVT_CONNECT) {
+            Serial.println("WebSocket client connected");
+            colorWipe(strip.Color(0, 255, 0), 2000); // Green
+        } else if (type == WS_EVT_DISCONNECT) {
+            Serial.println("WebSocket client disconnected");
+            colorWipe(strip.Color(255, 165, 0), 2000); // Orange
+        } else if (type == WS_EVT_DATA) {
+            AwsFrameInfo *info = (AwsFrameInfo *)arg;
+            if (info->opcode == WS_TEXT) {
+                // Handle WebSocket text data
+                String receivedData = String((char *)data);
+                Serial.println("Received WebSocket data: " + receivedData);
 
-    // Connect to the WebSocket server -------------------
-    client.connect(serverAddress, serverPort, "/");
-    while (!client.available()) {
-        client.poll();
-        delay(10);
-        colorWipe(strip.Color(233, 69, 233), 50); // Pink --> Connecting to server --> not connected to server
-    }
+                // Echo back to the client
+                client->text(receivedData);
+            }
+        }
+    });
 
-    Serial.println("Connected to server");
-    colorWipe(strip.Color(0, 255, 0), 50); // Green --> Connected to server
+    // Attach WebSocket to the server
+    server.addHandler(&ws);
 
-    // Set the message callback
-    client.onMessage(onMessage);
+    // Start server
+    server.begin();
 }
 
-int value = 0;
-
 void loop() {
-    // put your main code here, to run repeatedly:
-
-    http.begin(serverName);
-
-    int httpResponseCode = http.GET();
-
-    if (httpResponseCode > 0) {
-        String response = http.getString();
-
-        Serial.println(httpResponseCode);
-        Serial.println(response);
-
-        if (response == "open") {
-        }
-    }
-
-    client.poll();
+    // Your main loop code goes here
 }
 
 // Fill the dots one after the other with a color
