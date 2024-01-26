@@ -1,5 +1,7 @@
 #include "Adafruit_NeoPixel.h"
 #include "config.h"
+#include "mbedtls/sha256.h"
+#include <ArduinoJson.h>
 #include <ArduinoWebsockets.h>
 #include <WiFi.h>
 
@@ -25,7 +27,7 @@ void setup() {
 
     Serial.println("");
     Serial.println("WiFi connected.");
-    colorWipe(strip.Color(255, 125, 0), 50); // Orange on Standby
+    colorWipe(strip.Color(255, 255, 204), 50); // Light Yellow on Standby
 
     // Connect to the WebSocket server
     while (!client.connect(SERVERADDRESS, PORT, "/")) {
@@ -34,13 +36,51 @@ void setup() {
     }
 
     Serial.println("Connected to WebSocket server.");
-    colorWipe(strip.Color(0, 255, 0), 50); // Green connected
+    colorWipe(strip.Color(173, 216, 230), 50); // Light Blue connected
 
     // Register a callback function to handle incoming messages
     client.onMessage([](WebsocketsMessage message) {
         Serial.println("Received message: " + message.data());
         colorWipe(strip.Color(0, 0, 255), 2000); // Blue message received
-        colorWipe(strip.Color(0, 255, 0), 50);   // Green connected, waiting for instruction
+        colorWipe(strip.Color(255, 125, 0), 50); // Orange connected, waiting for instruction
+
+        // Parse JSON data here
+        DynamicJsonDocument doc(1024); // Adjust size according to JSON size
+        DeserializationError error = deserializeJson(doc, message.data());
+
+        if (error) {
+            Serial.print(F("deserializeJson() failed: "));
+            Serial.println(error.f_str());
+            return;
+        }
+
+        // Extract from JSON
+        const char *esp32ID = doc["esp32Code"];
+        const char *pw = doc["password"];
+        const char *instruction = doc["instruction"];
+        colorWipe(strip.Color(75, 0, 130), 1000); // Purple JSON parser success
+
+        // Check if receiving ID is the same as ESP's ID
+        // Hash receiving password and hash ESP's password
+        // Compare and check if correct:
+        // Only if when both correct read instruction and execute
+
+        if (ESPID == esp32ID) {
+            char ESPPWHash[65];
+            hashPassword(ESPPW, ESPPWHash);
+
+            char pwHash[65];
+            hashPassword(pw, pwHash);
+
+            // Compare hash
+            if (strcmp(ESPPWHash, pwHash) == 0) {
+                // INSERT UNLOCK CODE HERE
+                colorWipe(strip.Color(0, 255, 0), 2000); // GREEN DOOR UNLOCK
+            } else {
+                // DON'T DO ANYTHING REJECT
+                colorWipe(strip.Color(255, 0, 0), 2000); // RED REJECT
+            }
+        }
     });
 }
 
@@ -52,6 +92,24 @@ void loop() {
     delay(500);
 
     // Your main loop code goes here
+}
+
+void hashPassword(const char *password, char *buffer) {
+    unsigned hash[32]; // SHA_256 outputs 32 byte hash
+    mbedtls_sha256_context ctx;
+    mbedtls_sha256_init(&ctx);
+    mbedtls_sha256_start_ret(&ctx, 0); // 0 for SHA-256, 1 for SHA-224
+
+    // hash process for pw
+    mbedtls_sha256_update_ret(&ctx, (const unsigned char *)pw, pw.length());
+    mbedtls_sha256_finish_ret(&ctx, hash);
+    mbedtls_sha256_free(&ctx);
+
+    // Convert hash to hexadecimal string
+    char buf[65];
+    for (int i = 0; i < 32; i++) {
+        spritnf(&buf[i * 2], "%02x", (unsigned int)hash[i]);
+    }
 }
 
 // Fill the dots one after the other with a color
