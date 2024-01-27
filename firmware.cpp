@@ -9,7 +9,6 @@
 #define NUMPIXELS 3
 
 using namespace websockets;
-
 // Create a WebSocket client instance
 WebsocketsClient client;
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
@@ -19,7 +18,7 @@ void setup() {
     colorWipe(strip.Color(255, 0, 0), 50); // Red
 
     // Connect to Wi-Fi
-    WiFi.begin(SSID, PASSWORD);
+    WiFi.begin(WIFI_SSID, PASSWORD);
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
@@ -59,13 +58,16 @@ void setup() {
         const char *pw = doc["password"];
         const char *instruction = doc["instruction"];
         colorWipe(strip.Color(75, 0, 130), 1000); // Purple JSON parser success
+        Serial.println(esp32ID);
+        Serial.println(pw);
+        Serial.println(instruction);
 
         // Check if receiving ID is the same as ESP's ID
         // Hash receiving password and hash ESP's password
         // Compare and check if correct:
         // Only if when both correct read instruction and execute
 
-        if (ESPID == esp32ID) {
+        if (strcmp(ESPID, esp32ID)) {
             char ESPPWHash[65];
             hashPassword(ESPPW, ESPPWHash);
 
@@ -73,7 +75,7 @@ void setup() {
             hashPassword(pw, pwHash);
 
             // Compare hash
-            if (strcmp(ESPPWHash, pwHash) == 0) {
+            if (strcmp(ESPPWHash, pwHash) == 1) {
                 // INSERT UNLOCK CODE HERE
                 colorWipe(strip.Color(0, 255, 0), 2000); // GREEN DOOR UNLOCK
             } else {
@@ -95,20 +97,16 @@ void loop() {
 }
 
 void hashPassword(const char *password, char *buffer) {
-    unsigned hash[32]; // SHA_256 outputs 32 byte hash
+    unsigned char hash[32]; // Ensure this declaration is correct
     mbedtls_sha256_context ctx;
     mbedtls_sha256_init(&ctx);
-    mbedtls_sha256_start_ret(&ctx, 0); // 0 for SHA-256, 1 for SHA-224
-
-    // hash process for pw
-    mbedtls_sha256_update_ret(&ctx, (const unsigned char *)pw, pw.length());
-    mbedtls_sha256_finish_ret(&ctx, hash);
+    mbedtls_sha256_starts_ret(&ctx, 0);                                                 // Corrected from start to starts
+    mbedtls_sha256_update_ret(&ctx, (const unsigned char *)password, strlen(password)); // Use strlen instead of length
+    mbedtls_sha256_finish_ret(&ctx, hash);                                              // Ensure hash is unsigned char[32]
     mbedtls_sha256_free(&ctx);
 
-    // Convert hash to hexadecimal string
-    char buf[65];
     for (int i = 0; i < 32; i++) {
-        spritnf(&buf[i * 2], "%02x", (unsigned int)hash[i]);
+        sprintf(&buffer[i * 2], "%02x", (unsigned int)hash[i]);
     }
 }
 
