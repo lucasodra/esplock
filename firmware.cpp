@@ -94,7 +94,10 @@ void loop() {
     if (client.available()) {
         client.poll();
     } else {
-        client.connect(SERVERADDRESS, PORT, "/");
+        while (!client.connect(SERVERADDRESS, PORT, "/")) {
+            Serial.println("Failed to connect to WebSocket server. Retrying...");
+            delay(1000);
+        }
     }
     delay(500);
 
