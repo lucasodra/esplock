@@ -112,7 +112,6 @@ void hashPassword(const char *password, char *buffer) {
     mbedtls_sha256_update_ret(&ctx, (const unsigned char *)password, strlen(password)); // Use strlen instead of length
     mbedtls_sha256_finish_ret(&ctx, hash);                                              // Ensure hash is unsigned char[32]
     mbedtls_sha256_free(&ctx);
-
     for (int i = 0; i < 32; i++) {
         sprintf(&buffer[i * 2], "%02x", (unsigned int)hash[i]);
     }
