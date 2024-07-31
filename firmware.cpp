@@ -19,6 +19,7 @@ using namespace websockets;
 #define DOOR_PIN 1
 #define LED_PIN 16
 #define NUMPIXELS 3
+#define PRESET_PASSWORD "your_secure_password" 
 
 // Definitions
 WiFiClientSecure wifiClient;
@@ -213,8 +214,15 @@ void processCommand(const char* decryptedCommand) {
     const char* timestamp = doc["timestamp"];
     const char* password = doc["password"];
 
-    // TODO: Validate the timestamp and password
-    // Example check (implement actual validation logic):
+    // Validate the password
+    if (strcmp(password, PRESET_PASSWORD) != 0) {
+        Serial.println("Invalid password");
+        blinkColor(strip.Color(255, 0, 0), 5, 100); // Red blink for invalid password
+        return;
+    }
+
+    // TODO: Validate the timestamp (implement actual logic)
+
     if (strcmp(command, "unlock") == 0) {
         unlockDoor();
     } else if (strcmp(command, "lock") == 0) {
