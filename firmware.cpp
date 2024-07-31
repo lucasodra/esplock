@@ -16,10 +16,11 @@ using namespace websockets;
 #define WIFI_PASSWORD "Your_Password"
 #define SERVER_ADDRESS "your-server.com"
 #define PORT 443
+#define DOOR_NAME "FrontDoor" // User-defined name for the door
 #define DOOR_PIN 1
 #define LED_PIN 16
 #define NUMPIXELS 3
-#define PRESET_PASSWORD "your_secure_password" 
+#define PRESET_PASSWORD "your_secure_password"
 
 // Definitions
 WiFiClientSecure wifiClient;
@@ -31,6 +32,9 @@ mbedtls_pk_context pk_ctx;
 mbedtls_ctr_drbg_context ctr_drbg;
 mbedtls_entropy_context entropy;
 
+char publicKey[800]; // Buffer to hold the public key
+size_t publicKeyLen = sizeof(publicKey);
+
 void connectToWiFi();
 void connectToWebSocket();
 void handleWebSocketMessage(WsMessage message);
@@ -41,25 +45,43 @@ void unlockDoor();
 void lockDoor();
 void rsaDecrypt(const char* input, size_t input_len, char* output, size_t* output_len);
 void processCommand(const char* decryptedCommand);
+void sendPublicKeyAndDoorName();
 
 void setup() {
     Serial.begin(115200);
     setupNeoPixel();
     lockDoor(); // Ensure door is locked on startup
 
-    connectToWiFi();
-    connectToWebSocket();
-
-    // Initialize mbedTLS for RSA decryption
+    // Initialize mbedTLS for RSA key generation and decryption
     mbedtls_pk_init(&pk_ctx);
     mbedtls_ctr_drbg_init(&ctr_drbg);
     mbedtls_entropy_init(&entropy);
-    const char *pers = "rsa_decrypt";
+    const char *pers = "rsa_generate";
     mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy, (const unsigned char *)pers, strlen(pers));
-    int ret = mbedtls_pk_parse_key(&pk_ctx, (const unsigned char *)your_private_key_pem, strlen(your_private_key_pem) + 1, NULL, 0);
+
+    // Generate an RSA key pair
+    int ret = mbedtls_pk_setup(&pk_ctx, mbedtls_pk_info_from_type(MBEDTLS_PK_RSA));
     if (ret != 0) {
-        Serial.println("Failed to load private key");
+        Serial.println("Failed to setup pk_ctx");
+        return;
     }
+    ret = mbedtls_rsa_gen_key(mbedtls_pk_rsa(pk_ctx), mbedtls_ctr_drbg_random, &ctr_drbg, 2048, 65537);
+    if (ret != 0) {
+        Serial.println("Failed to generate RSA key");
+        return;
+    }
+
+    // Export the public key to the buffer
+    ret = mbedtls_pk_write_pubkey_pem(&pk_ctx, (unsigned char *)publicKey, publicKeyLen);
+    if (ret != 0) {
+        Serial.println("Failed to write public key");
+        return;
+    }
+    Serial.println("Public Key generated:");
+    Serial.println(publicKey);
+
+    connectToWiFi();
+    connectToWebSocket();
 
     // Set up OTA updates
     ArduinoOTA.onStart([]() {
@@ -112,6 +134,21 @@ void connectToWebSocket() {
     }
     Serial.println("WebSocket connected.");
     blinkColor(strip.Color(0, 255, 0), 5, 100); // Green blink for successful connection
+
+    // Send the public key and door name to the server
+    sendPublicKeyAndDoorName();
+}
+
+void sendPublicKeyAndDoorName() {
+    if (webSocketClient.isConnected()) {
+        StaticJsonDocument<1024> jsonDoc;
+        jsonDoc["doorName"] = DOOR_NAME;
+        jsonDoc["publicKey"] = publicKey;
+        char buffer[1024];
+        size_t n = serializeJson(jsonDoc, buffer);
+        webSocketClient.send(buffer, n);
+        Serial.println("Public key and door name sent to server");
+    }
 }
 
 void handleWebSocketMessage(WsMessage message) {
