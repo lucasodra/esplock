@@ -39,6 +39,7 @@ String wifiSSID = INITIAL_WIFI_SSID;
 String wifiPassword = INITIAL_WIFI_PASSWORD;
 String serverAddress = INITIAL_SERVER_ADDRESS;
 String presetPassword = INITIAL_PRESET_PASSWORD;
+String sessionToken = ""; // Session token received upon registration
 
 // Function Prototypes
 void connectToWiFi();
@@ -57,7 +58,7 @@ void saveWiFiCredentials(const String &ssid, const String &password);
 void saveServerAddress(const String &address);
 void savePresetPassword(const String &password);
 void loadStoredData();
-void sendPublicKey();
+void sendDoorIDAndPublicKey();
 void sendStatus();
 bool validatePresetPassword(const char* providedPassword);
 bool validateTimestamp(const char* timestamp);
@@ -84,6 +85,9 @@ void setup() {
     if (!loadKeyPair()) {
         generateAndStoreKeyPair();
     }
+
+    // Broadcast Door ID and Public Key
+    sendDoorIDAndPublicKey();
 
     // Set up OTA updates
     ArduinoOTA.onStart([]() {
@@ -126,7 +130,7 @@ void connectToWiFi() {
 
 void connectToWebSocket() {
     Serial.println("Connecting to WebSocket server...");
-    webSocketClient.beginSSL(serverAddress.c_str(), PORT, "/ws");
+    webSocketClient.beginSSL(serverAddress.c_str(), 443, "/ws");
     webSocketClient.onEvent(handleWebSocketMessage);
     while (!webSocketClient.isConnected()) {
         webSocketClient.loop();
@@ -265,8 +269,6 @@ void processCommand(const char* decryptedCommand) {
     } else if (strcmp(command, "updatePresetPassword") == 0) {
         const char* newPresetPassword = doc["newPresetPassword"];
         savePresetPassword(newPresetPassword);
-    } else if (strcmp(command, "getPublicKey") == 0) {
-        sendPublicKey();
     } else if (strcmp(command, "getStatus") == 0) {
         sendStatus();
     } else {
@@ -280,31 +282,20 @@ bool validatePresetPassword(const char* providedPassword) {
 }
 
 bool validateTimestamp(const char* timestamp) {
-    // Example: Implement the logic to validate the timestamp
-    // This could include checking if the timestamp is within a certain range
-    // from the current time to prevent replay attacks.
-
-    // Convert the timestamp to a time structure
+    // Implement the logic to validate the timestamp to prevent replay attacks.
     struct tm tm;
     if (strptime(timestamp, "%Y-%m-%dT%H:%M:%S", &tm) == NULL) {
-        return false; // Timestamp format is invalid
+        return false;
     }
-
-    // Convert the time structure to a time_t (epoch time)
     time_t messageTime = mktime(&tm);
-
-    // Get the current time
     time_t currentTime = time(NULL);
+    const time_t allowedTimeDifference = 5 * 60;
 
-    // Define an acceptable time difference (e.g., 5 minutes)
-    const time_t allowedTimeDifference = 5 * 60; // 5 minutes in seconds
-
-    // Check if the message time is within the acceptable range
     if (abs(currentTime - messageTime) > allowedTimeDifference) {
-        return false; // Timestamp is too far from the current time
+        return false;
     }
 
-    return true; // Timestamp is valid
+    return true;
 }
 
 void generateAndStoreKeyPair() {
@@ -320,7 +311,6 @@ void generateAndStoreKeyPair() {
         return;
     }
 
-    // Extract and store public key
     unsigned char publicKey[1600];
     ret = mbedtls_pk_write_pubkey_pem(&pk_ctx, publicKey, sizeof(publicKey));
     if (ret == 0) {
@@ -330,7 +320,6 @@ void generateAndStoreKeyPair() {
         Serial.println("Failed to write public key to PEM format");
     }
 
-    // Optionally store private key (less secure, but necessary if private key regeneration is not possible)
     unsigned char privateKey[1600];
     ret = mbedtls_pk_write_key_pem(&pk_ctx, privateKey, sizeof(privateKey));
     if (ret == 0) {
@@ -388,7 +377,6 @@ void savePresetPassword(const String &password) {
 }
 
 void loadStoredData() {
-    // Load stored data or use default/preset values if not found
     wifiSSID = preferences.getString("wifiSSID", INITIAL_WIFI_SSID);
     wifiPassword = preferences.getString("wifiPassword", INITIAL_WIFI_PASSWORD);
     serverAddress = preferences.getString("serverAddress", INITIAL_SERVER_ADDRESS);
@@ -397,7 +385,6 @@ void loadStoredData() {
 }
 
 void sendDoorIDAndPublicKey() {
-    // Ensure the public key is available
     unsigned char publicKey[1600];
     int ret = mbedtls_pk_write_pubkey_pem(&pk_ctx, publicKey, sizeof(publicKey));
     if (ret != 0) {
@@ -407,15 +394,12 @@ void sendDoorIDAndPublicKey() {
 
     if (WiFi.status() == WL_CONNECTED) {
         HTTPClient http;
-
-        // Use serverAddress if available, otherwise use INITIAL_SERVER_ADDRESS
         String url = serverAddress.isEmpty() ? String(INITIAL_SERVER_ADDRESS) : serverAddress;
-        url += "/api/register"; // API endpoint
+        url += "/api/register";
 
-        http.begin(url); // OpenLock server API endpoint
+        http.begin(url);
         http.addHeader("Content-Type", "application/json");
 
-        // Create JSON document with Door ID and Public Key
         DynamicJsonDocument jsonDoc(1024);
         jsonDoc["doorID"] = DOOR_ID;
         jsonDoc["publicKey"] = (const char *)publicKey;
@@ -423,7 +407,6 @@ void sendDoorIDAndPublicKey() {
         String requestBody;
         serializeJson(jsonDoc, requestBody);
 
-        // Send POST request with the JSON body
         int httpResponseCode = http.POST(requestBody);
 
         if (httpResponseCode > 0) {
@@ -437,18 +420,6 @@ void sendDoorIDAndPublicKey() {
         http.end();
     } else {
         Serial.println("WiFi not connected, unable to send Door ID and Public Key.");
-    }
-}
-
-void sendPublicKey() {
-    unsigned char publicKey[1600];
-    int ret = mbedtls_pk_write_pubkey_pem(&pk_ctx, publicKey, sizeof(publicKey));
-    if (ret == 0) {
-        String publicKeyStr = (const char *)publicKey;
-        webSocketClient.send(publicKeyStr.c_str());
-        Serial.println("Sent public key to server");
-    } else {
-        Serial.println("Failed to write public key to PEM format");
     }
 }
 
